@@ -1,0 +1,2 @@
+{ "name": "streakd", "private": true, "workspaces": ["packages/*", "apps/*"],
+  "scripts": { "test": "npm test -w @streakd/core", "typecheck": "npm run typecheck -w @streakd/api", "dev:api": "npm run dev -w @streakd/api" } }
