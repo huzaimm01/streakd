@@ -21,7 +21,7 @@ function Auth({ onAuth }: { onAuth: (u: any) => void }) {
   const submit = (e: FormEvent) => { e.preventDefault(); run(async () => {
     if (mode === 'forgot') { await api('POST', '/auth/forgot', { email: f.email }); setNote('If that email has an account, a reset link is on its way.'); return; }
     if (mode === 'reset') { await api('POST', '/auth/reset', { token: resetToken, password: f.password }); history.replaceState(null, '', location.pathname); setMode('login'); setNote('Password changed. Log in with your new password.'); return; }
-    const r = await api('POST', mode === 'login' ? '/auth/login' : '/auth/register', f); setToken(r.accessToken); onAuth(r.user);
+    const r = await api('POST', mode === 'login' ? '/auth/login' : '/auth/register', f); setToken(r.accessToken, r.refreshToken); onAuth(r.user);
   }); };
   return <div className="wrap"><header><h1>Streak’d</h1></header>
     <form className="card" onSubmit={submit}><h2>{{ login: 'Log in', register: 'Create account', forgot: 'Reset password', reset: 'Choose a new password' }[mode]}</h2>
