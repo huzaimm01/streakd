@@ -1,0 +1,29 @@
+# Render Blueprint for the Streak'd API (free tier).
+# Deploy from the Render dashboard with "New + > Blueprint", or let Render
+# pick it up from this repo. Secrets are set in the dashboard, never here.
+services:
+  - type: web
+    name: streakd-api
+    runtime: docker
+    dockerfilePath: apps/api/Dockerfile
+    dockerContext: .
+    plan: free
+    region: ohio
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: TRUST_PROXY
+        value: "true"
+      - key: CORS_ORIGINS
+        value: https://huzaimm01.github.io
+      - key: APP_URL
+        value: https://huzaimm01.github.io/streakd
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
