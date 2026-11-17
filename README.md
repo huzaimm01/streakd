@@ -38,5 +38,3 @@ Without Docker, run a local MongoDB, point `MONGODB_URI` at it, then
 
 Password reset needs SMTP (`SMTP_URL`, `MAIL_FROM`, `APP_URL`). Without it,
 the reset link is printed in the API logs instead of emailed.
-
-See `HANDOFF.md` for the full deployment and smoke-test checklist.
