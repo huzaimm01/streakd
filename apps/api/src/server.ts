@@ -50,11 +50,22 @@ export async function build() {
     return { m: m!, group, groupId };
   }
 
+  // Refresh tokens live in two places: the HttpOnly `rt` cookie (browsers that
+  // allow cross-site cookies) and, for browsers that block those (e.g. Safari
+  // with the site on one domain and the API on another), the response body,
+  // which the web app keeps in localStorage and sends back in the request
+  // body. Either way the server only ever stores the SHA-256 hash.
+  function refreshTokenFrom(req: FastifyRequest): string | undefined {
+    const fromBody = (req.body as any)?.refreshToken;
+    const fromHeader = (req.headers.authorization ?? '').replace(/^Bearer /i, '');
+    return [(req.cookies as any).rt as string | undefined, fromHeader, typeof fromBody === 'string' ? fromBody : undefined]
+      .find((x): x is string => typeof x === 'string' && x.length > 0);
+  }
   async function session(reply: FastifyReply, userId: string) {
     const token = randomBytes(32).toString('hex');
     await RefreshToken.create({ userId, tokenHash: sha(token), expiresAt: new Date(Date.now() + cfg.refreshDays * 864e5) });
     reply.setCookie('rt', token, { httpOnly: true, secure: cfg.secure || cfg.sameSite === 'none', sameSite: cfg.sameSite, path: '/auth', maxAge: cfg.refreshDays * 86400 });
-    return { accessToken: app.jwt.sign({ sub: userId }) };
+    return { accessToken: app.jwt.sign({ sub: userId }), refreshToken: token };
   }
   const publicUser = (u: any) => ({ id: u._id, email: u.email, displayName: u.displayName });
 
@@ -76,13 +87,13 @@ export async function build() {
     return { user: publicUser(u), ...(await session(reply, String(u!._id))) };
   });
   app.post('/auth/refresh', strictLimit, async (req, reply) => {
-    const t = (req.cookies as any).rt as string | undefined;
+    const t = refreshTokenFrom(req);
     const row = t ? await RefreshToken.findOneAndDelete({ tokenHash: sha(t) }) : null; // rotation: old token is single-use
     if (!row || row.expiresAt < new Date()) fail(401, 'Session expired');
     return session(reply, String(row!.userId));
   });
   app.post('/auth/logout', async (req, reply) => {
-    const t = (req.cookies as any).rt as string | undefined;
+    const t = refreshTokenFrom(req);
     if (t) await RefreshToken.deleteOne({ tokenHash: sha(t) });
     reply.clearCookie('rt', { path: '/auth' });
     return { ok: true };
