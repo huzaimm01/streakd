@@ -267,7 +267,12 @@ export async function build() {
       group: computeStreaks(subs.filter((s) => s.gameId === gameId).map((s) => s.date), today),
       you: computeStreaks(subs.filter((s) => s.gameId === gameId && String(s.userId) === me).map((s) => s.date), today),
     };
-    return { today, overall: computeStreaks(subs.map((s) => s.date), today), perGame };
+    // Daily activity series for the Dashboard heat map: last 26 weeks of
+    // group-wide and own submissions, counted per day (YYYY-MM-DD, group tz).
+    const since = new Date(today + 'T00:00:00Z'); since.setUTCDate(since.getUTCDate() - 181);
+    const sinceStr = since.toISOString().slice(0, 10);
+    const countByDate = (rows: any[]) => { const m = new Map<string, number>(); for (const s of rows) if (s.date >= sinceStr) m.set(s.date, (m.get(s.date) ?? 0) + 1); return [...m.entries()].map(([date, games]) => ({ date, games })).sort((a, b) => a.date.localeCompare(b.date)); };
+    return { today, overall: computeStreaks(subs.map((s) => s.date), today), perGame, days: countByDate(subs), myDays: countByDate(subs.filter((s) => String(s.userId) === me)) };
   });
 
   // ---------- Championships ----------
