@@ -38,12 +38,42 @@ function Auth({ onAuth }: { onAuth: (u: any) => void }) {
 const gameName = (g: any, cat: any[], id: string) => g.games.find((x: any) => x.gameId === id)?.name ?? cat.find((c) => c.id === id)?.name ?? id;
 const gameHint = (g: any, cat: any[], id: string) => g.games.find((x: any) => x.gameId === id)?.inputHint ?? cat.find((c) => c.id === id)?.inputHint ?? '';
 
+// GitHub-style activity grid: last 26 weeks, one cell per day, shaded by how
+// many games the group played that day. Weeks are columns, Sunday at top.
+function Heatmap({ days, today }: { days: any[]; today: string }) {
+  const byDate = new Map(days.map((d: any) => [d.date, d.games]));
+  const end = new Date(today + 'T00:00:00Z');
+  const first = new Date(end); first.setUTCDate(first.getUTCDate() - 181);
+  const start = new Date(first); start.setUTCDate(start.getUTCDate() - start.getUTCDay()); // back to Sunday
+  const cells: { date: string; games: number; pad: boolean }[] = [];
+  const months: { label: string; col: number }[] = [];
+  let lastMonth = '', col = -1;
+  for (const d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    if (d.getUTCDay() === 0) { col++; const m = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }); if (m !== lastMonth) { months.push({ label: m, col }); lastMonth = m; } }
+    cells.push({ date: iso, games: byDate.get(iso) ?? 0, pad: iso < first.toISOString().slice(0, 10) });
+  }
+  const cols = col + 1;
+  const level = (n: number) => (n <= 0 ? 0 : n === 1 ? 1 : n === 2 ? 2 : n === 3 ? 3 : 4);
+  return <div className="scroll"><div className="heatmon" style={{ gridTemplateColumns: `repeat(${cols}, 12px)` }}>
+      {months.map((m) => <span key={m.label + m.col} style={{ gridColumn: m.col + 1 }}>{m.label}</span>)}</div>
+    <div className="heat">
+      {cells.map((c) => <span key={c.date} className="c" data-l={c.pad ? 0 : level(c.games)} style={c.pad ? { visibility: 'hidden' } : undefined}
+        title={`${c.date}: ${c.games} game${c.games === 1 ? '' : 's'}`} />)}
+    </div>
+    <p className="mute legend">Less <span className="c" data-l="0" /><span className="c" data-l="1" /><span className="c" data-l="2" /><span className="c" data-l="3" /><span className="c" data-l="4" /> More</p></div>;
+}
+
 function Dashboard({ g, cat }: any) {
-  const [s, setS] = useState<any>(null); const { err, run } = useAction();
+  const [s, setS] = useState<any>(null); const [scope, setScope] = useState<'group' | 'you'>('group'); const { err, run } = useAction();
   useEffect(() => { run(async () => setS(await api('GET', `/groups/${g._id}/streaks`))); }, [g._id]);
   if (!s) return <Err e={err} />;
   return <><Card title="Group activity streak"><div className="grid">
       <div className="stat"><b>{s.overall.current}</b>current days</div><div className="stat"><b>{s.overall.longest}</b>longest</div><div className="stat"><b>{s.overall.total}</b>active days</div></div></Card>
+    <Card title="Activity"><p className="mute">
+      <button type="button" className="tab" aria-current={scope === 'group'} onClick={() => setScope('group')}>Group</button>{' '}
+      <button type="button" className="tab" aria-current={scope === 'you'} onClick={() => setScope('you')}>You</button></p>
+      <Heatmap days={scope === 'group' ? (s.days ?? []) : (s.myDays ?? [])} today={s.today} /></Card>
     <Card title="Streak per game"><div className="scroll"><table><thead><tr><th>Game</th><th>Group now</th><th>Group best</th><th>You now</th><th>You best</th></tr></thead><tbody>
       {Object.entries<any>(s.perGame).map(([id, v]) => <tr key={id}><td>{gameName(g, cat, id)}</td><td>{v.group.current}</td><td>{v.group.longest}</td><td>{v.you.current}</td><td>{v.you.longest}</td></tr>)}</tbody></table></div></Card></>;
 }
