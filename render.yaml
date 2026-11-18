@@ -20,9 +20,9 @@ services:
       - key: TRUST_PROXY
         value: "true"
       - key: CORS_ORIGINS
-        value: https://huzaimm01.github.io
+        value: https://huzaimm01.github.io,https://streakd.huzaim.ca
       - key: APP_URL
-        value: https://huzaimm01.github.io/streakd
+        value: https://streakd.huzaim.ca
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET

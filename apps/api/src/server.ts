@@ -6,7 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { z, ZodError } from 'zod';
-import { GAMES, getGame, score, computeStreaks, dateInTz, standingsForMonth } from '@streakd/core';
+import { GAMES, getGame, score, computeStreaks, dateInTz, addDays, standingsForMonth } from '@streakd/core';
 import { cfg } from './config.ts';
 import { sendMail } from './mail.ts';
 import { User, RefreshToken, PasswordReset, Group, Membership, Invitation, Submission, Championship } from './models.ts';
@@ -57,10 +57,11 @@ export async function build() {
   // body. Either way the server only ever stores the SHA-256 hash.
   function refreshTokenFrom(req: FastifyRequest): string | undefined {
     const fromBody = (req.body as any)?.refreshToken;
-    const fromHeader = (req.headers.authorization ?? '').replace(/^Bearer /i, '');
+    const fromHeader = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
     return [(req.cookies as any).rt as string | undefined, fromHeader, typeof fromBody === 'string' ? fromBody : undefined]
       .find((x): x is string => typeof x === 'string' && x.length > 0);
   }
+
   async function session(reply: FastifyReply, userId: string) {
     const token = randomBytes(32).toString('hex');
     await RefreshToken.create({ userId, tokenHash: sha(token), expiresAt: new Date(Date.now() + cfg.refreshDays * 864e5) });
@@ -267,12 +268,23 @@ export async function build() {
       group: computeStreaks(subs.filter((s) => s.gameId === gameId).map((s) => s.date), today),
       you: computeStreaks(subs.filter((s) => s.gameId === gameId && String(s.userId) === me).map((s) => s.date), today),
     };
-    // Daily activity series for the Dashboard heat map: last 26 weeks of
-    // group-wide and own submissions, counted per day (YYYY-MM-DD, group tz).
-    const since = new Date(today + 'T00:00:00Z'); since.setUTCDate(since.getUTCDate() - 181);
-    const sinceStr = since.toISOString().slice(0, 10);
-    const countByDate = (rows: any[]) => { const m = new Map<string, number>(); for (const s of rows) if (s.date >= sinceStr) m.set(s.date, (m.get(s.date) ?? 0) + 1); return [...m.entries()].map(([date, games]) => ({ date, games })).sort((a, b) => a.date.localeCompare(b.date)); };
-    return { today, overall: computeStreaks(subs.map((s) => s.date), today), perGame, days: countByDate(subs), myDays: countByDate(subs.filter((s) => String(s.userId) === me)) };
+    return { today, overall: computeStreaks(subs.map((s) => s.date), today), perGame };
+  });
+
+  // ---------- Activity heatmap (last 53 weeks, per day: your results, everyone's results, distinct players) ----------
+  app.get('/groups/:groupId/activity', A, async (req) => {
+    const { group, groupId } = await member(req);
+    const today = dateInTz(Date.now(), group.timezone);
+    const since = addDays(today, -371);
+    const active = new Set(group.games.filter((x) => x.active).map((x) => x.gameId));
+    const rows = (await Submission.find({ groupId, date: { $gte: since } }).select('userId gameId date').lean()).filter((s) => active.has(s.gameId));
+    const me = uid(req), days: Record<string, { you: number; group: number; players: number }> = {}, seen: Record<string, Set<string>> = {};
+    for (const r of rows) {
+      const d = (days[r.date] ??= { you: 0, group: 0, players: 0 }), u = String(r.userId);
+      d.group++; if (u === me) d.you++;
+      (seen[r.date] ??= new Set()).add(u); d.players = seen[r.date].size;
+    }
+    return { today, since, members: await Membership.countDocuments({ groupId }), days };
   });
 
   // ---------- Championships ----------
