@@ -35,7 +35,7 @@ function Overview({ g, cat, streaks, activity, today, onLog }: { g: Group; cat: 
   const day = activity?.days[streaks.today], members = activity?.members ?? g.members?.length ?? 1, o = streaks.overall;
   const line = day?.players ? `${day.players} of ${members} played today` : o.current ? 'Nobody’s played yet. Keep the streak alive.' : 'Log a result to start a streak.';
   return <>
-    <motion.section className="glass strip" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
+    <motion.section className="glass-tint grain strip" style={{ '--gtint': g.mainColor } as React.CSSProperties} initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
       <div className="strip-stat"><div><b className="num"><CountUp value={o.current} /></b><span>day streak</span></div></div>
       <i className="strip-div" />
       <div className="strip-stat"><div><b className="num">{o.longest}</b><span>longest</span></div></div>

@@ -125,7 +125,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   return <AnimatePresence>{open && (
     <div className="sheet-root">
       <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
-      <motion.div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className="sheet"
+      <motion.div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className="sheet grain"
         initial={mobile ? { y: '100%' } : { opacity: 0, y: 24, scale: 0.97 }} animate={mobile ? { y: '0%' } : { opacity: 1, y: 0, scale: 1 }} exit={mobile ? { y: '100%' } : { opacity: 0, y: 12, scale: 0.98 }}
         transition={{ type: 'spring', stiffness: 380, damping: 38 }}
         drag={mobile ? 'y' : false} dragControls={drag} dragListener={false} dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 0.5 }}

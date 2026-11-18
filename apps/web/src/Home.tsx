@@ -18,7 +18,7 @@ function GroupCard({ g, cat, i, streak, onOpen }: { g: Group; cat: CatalogGame[]
   const done = Math.max(0, active.length - pending.length);
   const names = g.memberNames ?? [], extra = (g.memberCount ?? names.length) - names.length;
   return <motion.div initial={{ opacity: 0, y: 34, scale: 0.94 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.12 + i * 0.08, type: 'spring', stiffness: 130, damping: 17 }}>
-    <motion.button className="glass gcard" style={{ rotateX: rx, rotateY: ry, transformPerspective: 900 }} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+    <motion.button className="glass-tint grain gcard" style={{ rotateX: rx, rotateY: ry, transformPerspective: 900, '--gtint': g.mainColor } as React.CSSProperties} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
       onPointerMove={move} onPointerLeave={() => { rx.set(0); ry.set(0); }} onClick={onOpen} aria-label={`Open ${g.name}`}>
       <span className="gcard-top">
         <span className="avatars">
