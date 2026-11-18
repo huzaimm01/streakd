@@ -55,8 +55,17 @@ export function applyPalette(p: Palette, mode: Mode) {
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', p.bg);
 }
 
+/** The app's own palette when no group is selected: navy background, navy accent.
+ * It does not go through palette(): that clamps dark backgrounds to near-black,
+ * which would darken the navy away. Light mode still uses the derived near-white. */
+export function defaultPalette(mode: Mode): Palette {
+  const accent = '#4a7de0';
+  if (mode === 'dark') return { bg: '#58647E', fg: '#f3f5fb', accent, onAccent: onColor(accent), orbs: [accent, '#46536b', accent] };
+  return palette('#58647E', accent, 'light');
+}
+
 /** Colour pairs offered when creating or restyling a group: [background, accent]. */
 export const PRESETS: [string, string][] = [
-  ['#0f1b3d', '#ffffff'], ['#2b1020', '#ff7a59'], ['#0d2a22', '#5eead4'], ['#1f1147', '#a78bfa'],
+  ['#0f1b3d', '#ffffff'], ['#2b1020', '#ff7a59'], ['#0d2a22', '#5eead4'], ['#0a1f44', '#4a7de0'],
   ['#08243a', '#38bdf8'], ['#2a0f1c', '#fb7185'], ['#2a2008', '#fbbf24'], ['#17181c', '#a3e635'],
 ];

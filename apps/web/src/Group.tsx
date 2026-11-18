@@ -1,9 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
-import { Heatmap, type Who } from './Heatmap';
+import { Heatmap, heatmapStart, type Who } from './Heatmap';
 import { ConfirmSheet, GamesSheet, InviteSheet, MembersSheet, SettingsSheet, SubmitSheet, meta } from './Sheets';
-import { ColorLine, CountUp, Icon, Menu, Segmented, ThemeSwitch } from './ui';
+import { CountUp, Icon, Menu, plural, Segmented, ThemeSwitch } from './ui';
 import type { Activity, CatalogGame, Group, Streaks, Theme } from './types';
 
 type View = 'overview' | 'board' | 'activity';
@@ -28,7 +28,7 @@ const Ring = ({ value, max }: { value: number; max: number }) => (
 function Overview({ g, cat, streaks, activity }: { g: Group; cat: CatalogGame[]; streaks: Streaks | null; activity: Activity | null }) {
   if (!streaks) return <div className="skeleton hero-skel glass" />;
   const day = activity?.days[streaks.today], members = activity?.members ?? g.members?.length ?? 1, o = streaks.overall;
-  const line = day?.players ? `${day.players} of ${members} played today` : o.current ? 'Nobody’s played yet — keep the streak alive.' : 'Log a result to start a streak.';
+  const line = day?.players ? `${day.players} of ${members} played today` : o.current ? 'Nobody’s played yet. Keep the streak alive.' : 'Log a result to start a streak.';
   return <>
     <motion.section className="glass hero" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
       <div>
@@ -39,7 +39,7 @@ function Overview({ g, cat, streaks, activity }: { g: Group; cat: CatalogGame[];
       <div className="hero-ring"><Ring value={day?.players ?? 0} max={members} /><span className="num">{day?.players ?? 0}<small>/{members}</small></span></div>
     </motion.section>
     <div className="mini-stats">
-      <div><b className="num">{o.longest}</b><span>longest streak</span></div><div><b className="num">{o.total}</b><span>active days</span></div>
+      <div><b className="num">{o.longest}</b><span>longest streak</span></div><div><b className="num">{o.total}</b><span>{plural(o.total, 'active day')}</span></div>
     </div>
     <h2 className="section">Per game</h2>
     <div className="tiles">{g.games.filter((x) => x.active && streaks.perGame[x.gameId]).map((x, i) => {
@@ -74,7 +74,7 @@ function Board({ g, me, cur }: { g: Group; me: string; cur: string }) {
       <motion.div key={month + s.userId} layout className="brow" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ delay: i * 0.04, type: 'spring', stiffness: 300, damping: 28 }}>
         <motion.span className="bar" initial={{ scaleX: 0 }} animate={{ scaleX: s.total / max }} transition={{ delay: 0.15 + i * 0.04, duration: 0.8, ease: [0.16, 1, 0.3, 1] }} />
         <span className={`rank r${s.rank}`}>{s.rank === 1 && d.final ? <Icon name="crown" size={16} /> : s.rank}</span>
-        <span className="who"><b>{s.displayName}{s.userId === me && <small className="you">you</small>}</b><small className="mute">{s.completed} games · {s.topScores} perfect</small></span>
+        <span className="who"><b>{s.displayName}{s.userId === me && <small className="you">you</small>}</b><small className="mute">{s.completed} {plural(s.completed, 'game')} · {s.topScores} perfect</small></span>
         <span className="pts num">{s.total}</span>
       </motion.div>))}</AnimatePresence></div>}
     <p className="mute fine">Custom games don’t earn points.</p>
@@ -85,12 +85,14 @@ function Board({ g, me, cur }: { g: Group; me: string; cur: string }) {
 function ActivityView({ g, activity }: { g: Group; activity: Activity | null }) {
   const [who, setWho] = useState<Who>('you');
   if (!activity) return <div className="skeleton glass rows-skel" />;
-  const vals = Object.entries(activity.days).map(([d, v]) => ({ d, n: who === 'you' ? v.you : v.group, p: who === 'you' ? v.you : v.players })).filter((x) => x.p > 0);
+  // Stats cover exactly the 20 weeks the heatmap shows, not the full year of data.
+  const from = heatmapStart(activity.today);
+  const vals = Object.entries(activity.days).filter(([d]) => d >= from).map(([d, v]) => ({ d, n: who === 'you' ? v.you : v.group, p: who === 'you' ? v.you : v.players })).filter((x) => x.p > 0);
   const results = vals.reduce((a, x) => a + x.n, 0), best = vals.reduce<{ d: string; n: number } | null>((b, x) => (!b || x.n > b.n ? x : b), null);
   return <>
-    <div className="act-head"><h2>Last 12 months</h2><Segmented small id="who" value={who} onChange={(v) => setWho(v as Who)} options={[{ id: 'you', label: 'You' }, { id: 'group', label: 'Group' }]} /></div>
+    <div className="act-head"><h2>Last 20 weeks</h2><Segmented small id="who" value={who} onChange={(v) => setWho(v as Who)} options={[{ id: 'you', label: 'You' }, { id: 'group', label: 'Group' }]} /></div>
     <Heatmap days={activity.days} today={activity.today} who={who} members={activity.members} games={g.games.filter((x) => x.active).length} />
-    <div className="mini-stats three"><div><b className="num">{vals.length}</b><span>active days</span></div><div><b className="num">{results}</b><span>results</span></div>
+    <div className="mini-stats three"><div><b className="num">{vals.length}</b><span>{plural(vals.length, 'active day')}</span></div><div><b className="num">{results}</b><span>{plural(results, 'result')}</span></div>
       <div><b className="num">{best ? best.n : 0}</b><span>best day</span></div></div>
   </>;
 }
@@ -107,7 +109,7 @@ export function GroupView({ g, cat, me, theme, setTheme, back, reload, onLeft, o
   return <div className="page group">
     <header className="top">
       <button className="icon-btn glass" onClick={back} aria-label="All groups"><Icon name="back" /></button>
-      <div className="ghead"><h1>{g.name}</h1><ColorLine main={g.mainColor} accent={g.accentColor} /></div>
+      <div className="ghead"><h1>{g.name}</h1></div>
       <Menu label="Group menu" trigger={<Icon name="more" />} top={<ThemeSwitch theme={theme} setTheme={setTheme} />} items={[
         { label: 'Invite people', icon: 'invite', onClick: () => setSheet('invite'), hidden: !admin }, { label: 'Members', icon: 'users', onClick: () => setSheet('members') },
         { label: 'Games', icon: 'grid-3x3', onClick: () => setSheet('games') }, { label: 'Settings', icon: 'sliders', onClick: () => setSheet('settings'), hidden: !admin },

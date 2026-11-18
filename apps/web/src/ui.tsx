@@ -60,7 +60,8 @@ export function Btn({ variant = 'glass', busy, className = '', children, ...r }:
   return <button {...r} className={`btn ${variant} ${className}`} data-busy={busy || undefined} disabled={r.disabled || busy}>{children}</button>;
 }
 
-/** Two-tap confirmation for destructive actions. */
+/** "1 game" / "2 games", "1 active day" / "3 active days" — hardcoded plurals read as a rush job. */
+export const plural = (n: number, one: string, many?: string) => (n === 1 ? one : many ?? one + 's');
 export function ConfirmBtn({ children, onConfirm, className = '', label = 'Tap again to confirm', disabled }: { children: ReactNode; onConfirm: () => void; className?: string; label?: string; disabled?: boolean }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => { if (!armed) return; const t = setTimeout(() => setArmed(false), 3000); return () => clearTimeout(t); }, [armed]);

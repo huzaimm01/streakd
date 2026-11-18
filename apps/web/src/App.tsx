@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ambient } from './Ambient';
 import { Auth } from './Auth';
 import { api, refresh, setToken } from './api';
-import { applyPalette, palette } from './color';
+import { applyPalette, defaultPalette, palette } from './color';
 import { GroupView } from './Group';
 import { Home } from './Home';
 import { AccountSheet, AddGroupSheet } from './Sheets';
@@ -37,7 +37,7 @@ function Shell({ user, setUser, logout }: { user: User; setUser: (u: User) => vo
   useEffect(() => { localStorage.setItem('theme', theme); }, [theme]);
 
   const g = gid ? (detail?._id === gid ? detail : groups?.find((x) => x._id === gid) ?? null) : null;
-  const pal = useMemo(() => (g ? palette(g.mainColor, g.accentColor, mode) : palette('#0c1022', '#8b9cff', mode)), [g?.mainColor, g?.accentColor, mode, !!g]);
+  const pal = useMemo(() => (g ? palette(g.mainColor, g.accentColor, mode) : defaultPalette(mode)), [g?.mainColor, g?.accentColor, mode, !!g]);
   const orbs = g ? pal.orbs : groups?.length ? groups.flatMap((x) => palette(x.mainColor, x.accentColor, mode).orbs.slice(0, 2)) : pal.orbs;
   useEffect(() => applyPalette(pal, mode), [pal, mode]);
 
@@ -62,15 +62,17 @@ function Shell({ user, setUser, logout }: { user: User; setUser: (u: User) => vo
 }
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null), [ready, setReady] = useState(false);
+  const [user, setUser] = useState<User | null>(null), [ready, setReady] = useState(false), [slow, setSlow] = useState(false);
   const dark = !useMedia('(prefers-color-scheme: light)'), theme = (localStorage.getItem('theme') as Theme) || 'dark', mode: Mode = theme === 'system' ? (dark ? 'dark' : 'light') : theme;
   useEffect(() => { (async () => { try { if (await refresh()) setUser(await api('GET', '/users/me')); } catch {} setReady(true); })(); }, []);
+  // If the API is still waking up after a few seconds, say so instead of a bare pulsing dot.
+  useEffect(() => { if (ready) return; const t = setTimeout(() => setSlow(true), 4000); return () => clearTimeout(t); }, [ready]);
   const logout = async () => { await api('POST', '/auth/logout').catch(() => {}); setToken(null); setUser(null); location.hash = '#/'; };
   // Signed-out screens use the default palette; the Shell takes over once logged in.
-  useEffect(() => { if (!user) applyPalette(palette('#0c1022', '#8b9cff', mode), mode); }, [user, mode]);
+  useEffect(() => { if (!user) applyPalette(defaultPalette(mode), mode); }, [user, mode]);
   return <MotionConfig reducedMotion="user"><ToastProvider>
-    {!ready ? <div className="boot" aria-label="Loading" /> : user
+    {!ready ? <div className="boot" aria-label="Loading">{slow ? <span className="boot-note">Waking up the server, one moment…</span> : null}</div> : user
       ? <Shell user={user} setUser={setUser} logout={logout} />
-      : <><Ambient bg={palette('#0c1022', '#8b9cff', mode).bg} orbs={palette('#0c1022', '#8b9cff', mode).orbs} /><Auth onAuth={setUser} /></>}
+      : <><Ambient bg={defaultPalette(mode).bg} orbs={defaultPalette(mode).orbs} /><Auth onAuth={setUser} /></>}
   </ToastProvider></MotionConfig>;
 }

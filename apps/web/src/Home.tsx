@@ -1,6 +1,6 @@
 import { motion, useSpring } from 'framer-motion';
 import type { PointerEvent } from 'react';
-import { Avatar, ColorLine, Icon, Menu, ThemeSwitch } from './ui';
+import { Avatar, ColorLine, Icon, Menu, plural, ThemeSwitch } from './ui';
 import type { Group, Theme, User } from './types';
 
 const hello = () => { const h = new Date().getHours(); return h < 5 ? 'Still up' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
@@ -24,7 +24,7 @@ function GroupCard({ g, i, streak, onOpen }: { g: Group; i: number; streak?: num
           {streak ? <span className="chip flame"><Icon name="flame" size={14} />{streak}</span> : null}
         </span>
         <h3>{g.name}</h3>
-        <p className="mute">{g.description || `${games} games · ${g.timezone.replace('_', ' ')}`}</p>
+        <p className="mute">{g.description || `${games} ${plural(games, 'game')} · ${g.timezone.replace('_', ' ')}`}</p>
         <ColorLine main={g.mainColor} accent={g.accentColor} delay={i * 0.08} />
       </motion.button>
     </div>
