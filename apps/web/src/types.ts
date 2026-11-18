@@ -7,6 +7,8 @@ export interface Member { userId: string; role: Role; displayName?: string }
 export interface Group {
   _id: string; name: string; description: string; mainColor: string; accentColor: string;
   timezone: string; games: GameSub[]; role: Role; members?: Member[];
+  /** From GET /groups: first few member names, total member count, and the active games you have not logged today. */
+  memberNames?: string[]; memberCount?: number; pendingToday?: string[];
 }
 export interface CatalogGame { id: string; name: string; icon: string; description: string; inputHint: string }
 export interface Streak { current: number; longest: number; total: number }

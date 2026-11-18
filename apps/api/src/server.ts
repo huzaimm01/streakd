@@ -18,6 +18,38 @@ class HttpError extends Error { status: number; constructor(status: number, msg:
 const fail = (s: number, m: string): never => { throw new HttpError(s, m); };
 const strictLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
 
+type SyncDoc = { raw: string; value?: number; success: boolean; points: number | null };
+
+/**
+ * A result logged in one group also lands in the user's other groups that play
+ * the same game, so nobody logs the same Wordle twice. The same calendar date
+ * is used everywhere; a group where that date is still in the future is
+ * skipped (nothing is ever written for a future date). Custom games are
+ * per-group by definition and never sync. Re-saving overwrites, exactly like
+ * re-saving inside one group; clearing a result clears it everywhere too.
+ */
+async function syncSubmissions(userId: string, sourceGroupId: string, date: string, docs: Record<string, SyncDoc>, cleared: string[]) {
+  const synced: { groupId: string; name: string; games: string[] }[] = [];
+  const skipped: { groupId: string; name: string; reason: string }[] = [];
+  if (!Object.keys(docs).length && !cleared.length) return { synced, skipped };
+  const mine = await Membership.find({ userId, groupId: { $ne: sourceGroupId } }).lean();
+  if (!mine.length) return { synced, skipped };
+  const others = await Group.find({ _id: { $in: mine.map((m) => m.groupId) } }).lean();
+  for (const g of others) {
+    const shared = (gameId: string) => !gameId.startsWith('custom:') && g.games.some((x: any) => x.gameId === gameId && x.active);
+    const games = Object.keys(docs).filter(shared);
+    const clears = cleared.filter(shared);
+    if (!games.length && !clears.length) continue;
+    if (date > dateInTz(Date.now(), g.timezone)) { skipped.push({ groupId: String(g._id), name: g.name, reason: 'date is in the future there' }); continue; }
+    await Promise.all([
+      ...games.map((gameId) => Submission.findOneAndUpdate({ groupId: g._id, userId, gameId, date }, { $set: { ...docs[gameId], scoringVersion: 1 } }, { upsert: true, new: true })),
+      ...clears.map((gameId) => Submission.deleteOne({ groupId: g._id, userId, gameId, date })),
+    ]);
+    synced.push({ groupId: String(g._id), name: g.name, games: [...games, ...clears] });
+  }
+  return { synced, skipped };
+}
+
 export async function build() {
   const app = Fastify({ logger: true });
   await app.register(cors, { origin: cfg.cors, credentials: true });
@@ -137,9 +169,25 @@ export async function build() {
     return reply.code(201).send(g);
   });
   app.get('/groups', A, async (req) => {
-    const ms = await Membership.find({ userId: uid(req) }).lean();
+    const me = uid(req);
+    const ms = await Membership.find({ userId: me }).lean();
     const groups = await Group.find({ _id: { $in: ms.map((m) => m.groupId) } }).lean();
-    return groups.map((g) => ({ ...g, role: ms.find((m) => String(m.groupId) === String(g._id))!.role }));
+    // The home cards show who is in each group and which games you still owe today, so the list carries those with it.
+    return Promise.all(groups.map(async (g) => {
+      const today = dateInTz(Date.now(), g.timezone);
+      const [mems, mine] = await Promise.all([
+        Membership.find({ groupId: g._id }).lean(),
+        Submission.find({ groupId: g._id, userId: me, date: today }).select('gameId').lean(),
+      ]);
+      const users = await User.find({ _id: { $in: mems.map((x) => x.userId) } }).select('displayName').lean();
+      const done = new Set(mine.map((s) => s.gameId));
+      return {
+        ...g, role: ms.find((m) => String(m.groupId) === String(g._id))!.role,
+        memberNames: mems.slice(0, 5).map((x) => users.find((u) => String(u._id) === String(x.userId))?.displayName ?? '?'),
+        memberCount: mems.length,
+        pendingToday: g.games.filter((x: any) => x.active).map((x: any) => x.gameId).filter((id: string) => !done.has(id)),
+      };
+    }));
   });
   app.get('/groups/:groupId', A, async (req) => {
     const { group, m, groupId } = await member(req);
@@ -233,21 +281,24 @@ export async function build() {
     const date = b.date ?? today;
     if (date > today) fail(400, 'Cannot submit for a future date');
     const saved: Record<string, unknown> = {}, errors: Record<string, string> = {};
+    const docs: Record<string, SyncDoc> = {}, cleared: string[] = [];
     for (const [gameId, rawIn] of Object.entries(b.results)) {
       const gs = group.games.find((x) => x.gameId === gameId);
       if (!gs || !gs.active) { errors[gameId] = 'Game is not enabled in this group'; continue; }
       const text = String(typeof rawIn === 'string' ? rawIn : rawIn).trim();
-      if (!text) { await Submission.deleteOne({ groupId, userId: uid(req), gameId, date }); continue; } // blank clears a result
-      let doc: { raw: string; value?: number; success: boolean; points: number | null };
+      if (!text) { await Submission.deleteOne({ groupId, userId: uid(req), gameId, date }); cleared.push(gameId); continue; } // blank clears a result
+      let doc: SyncDoc;
       if (gs.custom) doc = { raw: text, success: true, points: null };
       else {
         const game = getGame(gameId)!, r = game.validate(normalize(gameId, rawIn));
         if (!r.ok) { errors[gameId] = r.error; continue; }
         doc = { raw: text, value: r.value, success: r.success, points: score(game, r.success, r.value) };
       }
+      docs[gameId] = doc;
       saved[gameId] = await Submission.findOneAndUpdate({ groupId, userId: uid(req), gameId, date }, { $set: { ...doc, scoringVersion: 1 } }, { upsert: true, new: true }); // unique key => update, never duplicate
     }
-    return { date, saved, errors };
+    const { synced, skipped } = await syncSubmissions(uid(req), groupId, date, docs, cleared);
+    return { date, saved, errors, synced, skipped };
   });
   app.get('/groups/:groupId/submissions', A, async (req) => {
     const { groupId } = await member(req);

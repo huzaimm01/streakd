@@ -10,13 +10,18 @@ type View = 'overview' | 'board' | 'activity';
 type SheetId = null | 'submit' | 'invite' | 'members' | 'games' | 'settings' | 'leave' | 'delete';
 
 function useGroupData(id: string) {
-  const [streaks, setS] = useState<Streaks | null>(null), [activity, setA] = useState<Activity | null>(null);
+  const [streaks, setS] = useState<Streaks | null>(null), [activity, setA] = useState<Activity | null>(null), [loggedToday, setLoggedToday] = useState<string[]>([]);
   const load = useCallback(async () => {
     const [s, a] = await Promise.allSettled([api('GET', `/groups/${id}/streaks`), api('GET', `/groups/${id}/activity`)]);
-    if (s.status === 'fulfilled') setS(s.value); if (a.status === 'fulfilled') setA(a.value);
+    if (s.status === 'fulfilled') {
+      setS(s.value);
+      // Which games you have already logged today, so the overview rows can show it.
+      api('GET', `/groups/${id}/submissions?date=${s.value.today}`).then((r) => setLoggedToday(r.items.map((i: any) => i.gameId))).catch(() => setLoggedToday([]));
+    }
+    if (a.status === 'fulfilled') setA(a.value);
   }, [id]);
-  useEffect(() => { setS(null); setA(null); load(); }, [id]);
-  return { streaks, activity, load };
+  useEffect(() => { setS(null); setA(null); setLoggedToday([]); load(); }, [id]);
+  return { streaks, activity, loggedToday, load };
 }
 
 const Ring = ({ value, max }: { value: number; max: number }) => (
@@ -25,32 +30,29 @@ const Ring = ({ value, max }: { value: number; max: number }) => (
 );
 
 // ------------------------------------------------------------- overview
-function Overview({ g, cat, streaks, activity }: { g: Group; cat: CatalogGame[]; streaks: Streaks | null; activity: Activity | null }) {
+function Overview({ g, cat, streaks, activity, today, onLog }: { g: Group; cat: CatalogGame[]; streaks: Streaks | null; activity: Activity | null; today: string[]; onLog: () => void }) {
   if (!streaks) return <div className="skeleton hero-skel glass" />;
   const day = activity?.days[streaks.today], members = activity?.members ?? g.members?.length ?? 1, o = streaks.overall;
-  const line = day?.players ? `${day.players} of ${members} played today` : o.current ? 'Nobody’s played yet. Keep the streak alive.' : 'Log a result to start a streak.';
   return <>
-    <motion.section className="glass hero" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
-      <div>
-        <div className="hero-num"><span className="flame-big"><Icon name="flame" size={30} /></span><span className="num"><CountUp value={o.current} /></span></div>
-        <div className="hero-label">day group streak</div>
-        <p className="mute hero-sub">{line}</p>
-      </div>
+    <motion.section className="glass strip" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="strip-stat"><div><b className="num"><CountUp value={o.current} /></b><span>day streak</span></div></div>
+      <i className="strip-div" />
+      <div className="strip-stat"><div><b className="num">{o.longest}</b><span>longest</span></div></div>
+      <i className="strip-div" />
+      <div className="strip-stat"><div><b className="num">{o.total}</b><span>{plural(o.total, 'active day')}</span></div></div>
       <div className="hero-ring"><Ring value={day?.players ?? 0} max={members} /><span className="num">{day?.players ?? 0}<small>/{members}</small></span></div>
     </motion.section>
-    <div className="mini-stats">
-      <div><b className="num">{o.longest}</b><span>longest streak</span></div><div><b className="num">{o.total}</b><span>{plural(o.total, 'active day')}</span></div>
-    </div>
     <h2 className="section">Per game</h2>
-    <div className="tiles">{g.games.filter((x) => x.active && streaks.perGame[x.gameId]).map((x, i) => {
-      const m = meta(g, cat, x.gameId), s = streaks.perGame[x.gameId];
-      return <motion.div key={x.gameId} className="glass tile" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.045 }}>
-        <div className="tile-head"><span className="tile-ico"><Icon name={m.icon} size={18} /></span><b>{m.name}</b></div>
-        <div className="tile-stats">
-          <div><span className="k">You</span><span className="v num"><Icon name="flame" size={15} />{s.you.current}</span><span className="s">best {s.you.longest}</span></div>
-          <div><span className="k">Group</span><span className="v num"><Icon name="flame" size={15} />{s.group.current}</span><span className="s">best {s.group.longest}</span></div>
-        </div>
-      </motion.div>; })}</div>
+    <div className="prows">{g.games.filter((x) => x.active && streaks.perGame[x.gameId]).map((x, i) => {
+      const m = meta(g, cat, x.gameId), s = streaks.perGame[x.gameId], done = today.includes(x.gameId);
+      return <motion.button key={x.gameId} className="glass prow" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.045 }}
+        onClick={onLog} aria-label={`${m.name}, ${done ? 'logged today' : 'not logged yet'}. Open to log or view today’s results.`}>
+        <span className="tile-ico"><Icon name={m.icon} size={18} /></span>
+        <span className="prow-name"><b>{m.name}</b><small className="mute">{done ? 'Logged today' : 'Not logged yet'}</small></span>
+        <span className="prow-stat"><span className="k">You</span><span className="v num"><Icon name="flame" size={14} />{s.you.current}</span><span className="s">best {s.you.longest}</span></span>
+        <span className="prow-stat"><span className="k">Group</span><span className="v num"><Icon name="flame" size={14} />{s.group.current}</span><span className="s">best {s.group.longest}</span></span>
+        {done ? <span className="prow-done"><Icon name="check" size={16} /></span> : <span className="prow-pend"><i /></span>}
+      </motion.button>; })}</div>
   </>;
 }
 
@@ -103,7 +105,7 @@ export function GroupView({ g, cat, me, theme, setTheme, back, reload, onLeft, o
   back: () => void; reload: () => Promise<unknown>; onLeft: () => void; openAccount: () => void;
 }) {
   const [view, setView] = useState<View>('overview'), [sheet, setSheet] = useState<SheetId>(null);
-  const { streaks, activity, load } = useGroupData(g._id), admin = g.role !== 'member';
+  const { streaks, activity, loggedToday, load } = useGroupData(g._id), admin = g.role !== 'member';
   const today = streaks?.today ?? activity?.today, done = !!(today && activity?.days[today]?.you);
   const cur = today?.slice(0, 7) ?? new Date().toLocaleDateString('en-CA').slice(0, 7), close = () => setSheet(null);
   return <div className="page group">
@@ -121,7 +123,7 @@ export function GroupView({ g, cat, me, theme, setTheme, back, reload, onLeft, o
     <div className="seg-wrap"><Segmented id="view" value={view} onChange={(v) => setView(v as View)} options={[{ id: 'overview', label: 'Overview' }, { id: 'board', label: 'Board' }, { id: 'activity', label: 'Activity' }]} /></div>
     <AnimatePresence mode="wait" initial={false}>
       <motion.div key={view} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
-        {view === 'overview' && <Overview g={g} cat={cat} streaks={streaks} activity={activity} />}
+        {view === 'overview' && <Overview g={g} cat={cat} streaks={streaks} activity={activity} today={loggedToday} onLog={() => setSheet('submit')} />}
         {view === 'board' && <Board g={g} me={me} cur={cur} />}
         {view === 'activity' && <ActivityView g={g} activity={activity} />}
       </motion.div>

@@ -37,9 +37,10 @@ export interface Palette { bg: string; fg: string; accent: string; onAccent: str
 export function palette(main: string, accent: string, mode: Mode): Palette {
   const m = hexToHsl(main), a = hexToHsl(accent);
   if (mode === 'dark') {
+    // Flat surfaces now: one solid background for every group, no glow orbs.
+    // The group's colours still show up in its card strip, heatmap and ring, via the accent.
     const acc = a.l >= 0.6 ? accent : hslToHex({ ...a, l: 0.68 });
-    return { bg: hslToHex({ h: m.h, s: Math.min(m.s, 0.75), l: clamp(m.l, 0.04, 0.17) }), fg: '#f3f5fb', accent: acc, onAccent: onColor(acc),
-      orbs: [acc, hslToHex({ h: m.h, s: clamp(m.s, 0.4, 0.9), l: 0.36 }), acc] };
+    return { bg: '#090E1A', fg: '#f3f5fb', accent: acc, onAccent: onColor(acc), orbs: [] };
   }
   const acc = a.l <= 0.45 ? accent : hslToHex({ h: m.h, s: clamp(m.s, 0.35, 0.9), l: clamp(m.l, 0.28, 0.4) });
   return { bg: hslToHex({ h: m.h, s: Math.min(m.s, 0.5) * 0.6, l: 0.955 }), fg: hslToHex({ h: m.h, s: 0.35, l: 0.12 }), accent: acc, onAccent: onColor(acc),
@@ -55,12 +56,10 @@ export function applyPalette(p: Palette, mode: Mode) {
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', p.bg);
 }
 
-/** The app's own palette when no group is selected: navy background, navy accent.
- * It does not go through palette(): that clamps dark backgrounds to near-black,
- * which would darken the navy away. Light mode still uses the derived near-white. */
+/** The app's own palette when no group is selected: flat midnight navy, navy accent. */
 export function defaultPalette(mode: Mode): Palette {
   const accent = '#4a7de0';
-  if (mode === 'dark') return { bg: '#58647E', fg: '#f3f5fb', accent, onAccent: onColor(accent), orbs: [accent, '#46536b', accent] };
+  if (mode === 'dark') return { bg: '#090E1A', fg: '#f3f5fb', accent, onAccent: onColor(accent), orbs: [] };
   return palette('#58647E', accent, 'light');
 }
 

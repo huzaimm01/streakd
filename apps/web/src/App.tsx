@@ -52,7 +52,7 @@ function Shell({ user, setUser, logout }: { user: User; setUser: (u: User) => vo
           onLeft={async () => { open(null); await loadGroups(); }} />
       </motion.div>
         : <motion.div key="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-          <Home user={user} groups={groups} streaks={streaks} theme={theme} setTheme={setTheme} onOpen={open} onAccount={() => setAccount(true)} onLogout={logout}
+          <Home user={user} groups={groups} cat={cat} streaks={streaks} theme={theme} setTheme={setTheme} onOpen={open} onAccount={() => setAccount(true)} onLogout={logout}
             onAdd={(t) => { setAddTab(t); setAdd(t); }} />
         </motion.div>}
     </AnimatePresence>

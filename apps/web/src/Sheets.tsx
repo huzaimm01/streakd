@@ -23,10 +23,11 @@ export function SubmitSheet({ g, cat, open, onClose, onSaved }: { g: Group; cat:
   const save = () => run(async () => {
     const r = await api('PUT', `/groups/${g._id}/submissions`, { date, results: vals }); setErrs(r.errors); onSaved();
     const n = Object.keys(r.saved).length, bad = Object.keys(r.errors).length, pts = Object.values<any>(r.saved).reduce((a, s) => a + (s.points ?? 0), 0);
-    if (!bad) { toast(n ? `Saved ${n} result${n > 1 ? 's' : ''}${pts ? ` · +${pts} pts` : ''}` : 'Cleared'); onClose(); } else toast(`${bad} to fix`, 'err');
+    const syncedNames = (r.synced ?? []).map((s: any) => s.name), skippedNames = (r.skipped ?? []).map((s: any) => s.name);
+    if (!bad) { toast(n ? `Saved ${n} result${n > 1 ? 's' : ''}${pts ? ` · +${pts} pts` : ''}${syncedNames.length ? ` · also in ${syncedNames.join(', ')}` : ''}${skippedNames.length ? ` · not in ${skippedNames.join(', ')} (future date there)` : ''}` : 'Cleared'); onClose(); } else toast(`${bad} to fix`, 'err');
   });
   return <Sheet open={open} onClose={onClose} title="Today’s results">
-    <p className="mute lede">Fill in what you played, leave the rest blank. Saving again updates it.</p>
+    <p className="mute lede">Fill in what you played, leave the rest blank. Saving again updates it. Results also sync to your other groups that play the same games.</p>
     <div className="games-list">{active.map((x) => { const m = meta(g, cat, x.gameId), q = QUICK[x.gameId], v = vals[x.gameId] ?? '';
       return <div className="game-row" key={x.gameId} data-bad={!!errs[x.gameId] || undefined}>
         <div className="game-head"><span className="tile-ico"><Icon name={m.icon} size={18} /></span><div><b>{m.name}</b><small className="mute">{m.hint}</small></div></div>
