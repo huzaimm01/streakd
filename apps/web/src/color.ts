@@ -37,10 +37,11 @@ export interface Palette { bg: string; fg: string; accent: string; onAccent: str
 export function palette(main: string, accent: string, mode: Mode): Palette {
   const m = hexToHsl(main), a = hexToHsl(accent);
   if (mode === 'dark') {
-    // Flat surfaces now: one solid background for every group, no glow orbs.
-    // The group's colours still show up in its card strip, heatmap and ring, via the accent.
+    // The background IS the group's primary colour, darkened enough for text:
+    // its hue stays, lightness is clamped to a dark band so any pick stays readable.
     const acc = a.l >= 0.6 ? accent : hslToHex({ ...a, l: 0.68 });
-    return { bg: '#182238', fg: '#f3f5fb', accent: acc, onAccent: onColor(acc), orbs: [] };
+    const bg = hslToHex({ h: m.h, s: clamp(m.s, 0, 0.65), l: clamp(m.l, 0.05, 0.14) });
+    return { bg, fg: '#f3f5fb', accent: acc, onAccent: onColor(acc), orbs: [] };
   }
   const acc = a.l <= 0.45 ? accent : hslToHex({ h: m.h, s: clamp(m.s, 0.35, 0.9), l: clamp(m.l, 0.28, 0.4) });
   return { bg: hslToHex({ h: m.h, s: Math.min(m.s, 0.5) * 0.6, l: 0.955 }), fg: hslToHex({ h: m.h, s: 0.35, l: 0.12 }), accent: acc, onAccent: onColor(acc),

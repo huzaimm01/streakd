@@ -13,8 +13,15 @@ import type { CatalogGame, Group, Mode, Theme, User } from './types';
 /** Tiny hash router: "#/g/<id>" is a group, anything else is home. Browser back/forward just work. */
 const parse = () => location.hash.match(/^#\/g\/([a-f\d]{24})/i)?.[1] ?? null;
 function useRoute() {
-  const [gid, setGid] = useState(parse);
-  useEffect(() => { const f = () => setGid(parse()); addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
+  // Opening the app always lands on the dashboard: the tab's URL may still
+  // carry last session's #/g/<id>, and that must not reopen the group.
+  const [gid, setGid] = useState<string | null>(null);
+  useEffect(() => {
+    const f = () => setGid(parse());
+    addEventListener('hashchange', f);
+    if (parse()) location.hash = '#/';
+    return () => removeEventListener('hashchange', f);
+  }, []);
   return [gid, (id: string | null) => { location.hash = id ? `#/g/${id}` : '#/'; }] as const;
 }
 

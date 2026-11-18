@@ -13,7 +13,7 @@ h1,h2,h3,p{margin:0}h1,h2,h3,.brand{font-family:"Space Grotesk",Manrope,system-u
 /* ---------- ambient backdrop ---------- */
 .ambient{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
 .ambient-base{position:absolute;inset:0}
-.ambient::before{content:"";position:absolute;inset:0;background:radial-gradient(700px 320px at 50% -100px,rgba(120,150,220,.13),transparent 70%)}
+.ambient::before{content:"";position:absolute;inset:0;background:radial-gradient(700px 320px at 50% -100px,color-mix(in srgb,var(--accent) 18%,transparent),transparent 70%)}
 .orb{position:absolute;width:52vmax;height:52vmax;border-radius:50%;filter:blur(90px);opacity:.38;will-change:transform}
 [data-mode=light] .orb{opacity:.5}
 .orb-0{top:-18vmax;left:-12vmax;animation:drift0 26s ease-in-out infinite alternate}
