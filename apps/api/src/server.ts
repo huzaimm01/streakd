@@ -104,10 +104,21 @@ export async function build() {
 
   app.get('/health', async () => ({ ok: true }));
 
+  // Public config for the frontend: whether new accounts need an invite code.
+  // The code value itself is never exposed. Read at request time, so setting
+  // or clearing SIGNUP_CODE takes effect without a restart.
+  app.get('/config', async () => ({ signupCodeRequired: Boolean(process.env.SIGNUP_CODE) }));
+
   // ---------- Auth ----------
   const creds = z.object({ email: z.string().email().max(120), password: z.string().min(8).max(100) });
   app.post('/auth/register', strictLimit, async (req, reply) => {
-    const b = creds.extend({ displayName: z.string().trim().min(1).max(40) }).parse(req.body);
+    const b = creds.extend({ displayName: z.string().trim().min(1).max(40), signupCode: z.string().max(40).optional() }).parse(req.body);
+    // Friends-only signup gate: when SIGNUP_CODE is set (hosted instances),
+    // registration needs the matching invite code. Unset means open
+    // registration, so self-hosters cloning the repo are never locked out.
+    // Read at request time, never cached. Login and password reset are untouched.
+    const code = process.env.SIGNUP_CODE;
+    if (code && b.signupCode !== code) fail(403, 'Invite code required');
     if (await User.exists({ email: b.email.toLowerCase() })) fail(409, 'Email already registered');
     const u = await User.create({ email: b.email, displayName: b.displayName, passwordHash: await bcrypt.hash(b.password, 12) });
     return reply.code(201).send({ user: publicUser(u), ...(await session(reply, String(u._id))) });

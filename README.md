@@ -38,3 +38,10 @@ Without Docker, run a local MongoDB, point `MONGODB_URI` at it, then
 
 Password reset needs SMTP (`SMTP_URL`, `MAIL_FROM`, `APP_URL`). Without it,
 the reset link is printed in the API logs instead of emailed.
+
+## Friends-only signup (optional)
+
+Set `SIGNUP_CODE` on the API host (Render dashboard, or `.env` when
+self-hosting) and new accounts can only be created with that invite code.
+Existing accounts, logins and sessions are unaffected, and cloning the repo
+without setting it leaves registration open. Never commit the code.

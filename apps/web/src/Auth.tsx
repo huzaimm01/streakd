@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { api, setToken } from './api';
 import { Btn, Err, Field, Icon, useAction } from './ui';
 import type { User } from './types';
@@ -13,7 +13,12 @@ const TITLE: Record<Mode, [string, string]> = {
 export function Auth({ onAuth }: { onAuth: (u: User) => void }) {
   const resetToken = location.hash.match(/token=([a-f0-9]+)/)?.[1];
   const [mode, setMode] = useState<Mode>(resetToken ? 'reset' : 'login');
-  const [f, setF] = useState({ email: '', password: '', displayName: '' }); const [note, setNote] = useState('');
+  const [f, setF] = useState({ email: '', password: '', displayName: '', signupCode: '' }); const [note, setNote] = useState('');
+  // Friends-only signup: the invite-code field only appears when the API says
+  // a code is required. If the API is older than the gate (or unreachable),
+  // this stays false and registration behaves exactly as before.
+  const [codeRequired, setCodeRequired] = useState(false);
+  useEffect(() => { api('GET', '/config').then((c) => setCodeRequired(!!c.signupCodeRequired)).catch(() => {}); }, []);
   const { err, busy, run, setErr } = useAction();
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
   const go = (m: Mode) => { setMode(m); setErr(''); setNote(''); };
@@ -31,6 +36,7 @@ export function Auth({ onAuth }: { onAuth: (u: User) => void }) {
           {mode === 'register' && <Field label="Display name"><input className="input" value={f.displayName} onChange={set('displayName')} required maxLength={40} autoComplete="nickname" /></Field>}
           {mode !== 'reset' && <Field label="Email"><input className="input" type="email" value={f.email} onChange={set('email')} required autoComplete="email" /></Field>}
           {mode !== 'forgot' && <Field label={mode === 'reset' ? 'New password' : 'Password'}><input className="input" type="password" value={f.password} onChange={set('password')} required minLength={8} placeholder="8+ characters" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} /></Field>}
+          {mode === 'register' && codeRequired && <Field label="Invite code"><input className="input" value={f.signupCode} onChange={set('signupCode')} required placeholder="Ask a friend for the code" autoComplete="off" /></Field>}
           <Err e={err} />{note && <p className="ok">{note}</p>}
           <Btn variant="primary" className="block" busy={busy}>{{ login: 'Log in', register: 'Create account', forgot: 'Send reset link', reset: 'Change password' }[mode]}</Btn>
           <p className="mute switchline">{mode === 'login'
