@@ -33,6 +33,7 @@ const Ring = ({ value, max }: { value: number; max: number }) => (
 function Overview({ g, cat, streaks, activity, today, onLog }: { g: Group; cat: CatalogGame[]; streaks: Streaks | null; activity: Activity | null; today: string[]; onLog: () => void }) {
   if (!streaks) return <div className="skeleton hero-skel glass" />;
   const day = activity?.days[streaks.today], members = activity?.members ?? g.members?.length ?? 1, o = streaks.overall;
+  const line = day?.players ? `${day.players} of ${members} played today` : o.current ? 'Nobody’s played yet. Keep the streak alive.' : 'Log a result to start a streak.';
   return <>
     <motion.section className="glass strip" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
       <div className="strip-stat"><div><b className="num"><CountUp value={o.current} /></b><span>day streak</span></div></div>
@@ -42,6 +43,7 @@ function Overview({ g, cat, streaks, activity, today, onLog }: { g: Group; cat: 
       <div className="strip-stat"><div><b className="num">{o.total}</b><span>{plural(o.total, 'active day')}</span></div></div>
       <div className="hero-ring"><Ring value={day?.players ?? 0} max={members} /><span className="num">{day?.players ?? 0}<small>/{members}</small></span></div>
     </motion.section>
+    <p className="mute strip-sub">{line}</p>
     <h2 className="section">Per game</h2>
     <div className="prows">{g.games.filter((x) => x.active && streaks.perGame[x.gameId]).map((x, i) => {
       const m = meta(g, cat, x.gameId), s = streaks.perGame[x.gameId], done = today.includes(x.gameId);

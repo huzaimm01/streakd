@@ -1,8 +1,10 @@
 import { motion, useSpring } from 'framer-motion';
 import type { PointerEvent } from 'react';
-import { Avatar, Icon, Menu, ThemeSwitch } from './ui';
+import { Avatar, ColorLine, Icon, Menu, ThemeSwitch } from './ui';
 import { meta } from './Sheets';
 import type { CatalogGame, Group, Theme, User } from './types';
+
+const hello = () => { const h = new Date().getHours(); return h < 5 ? 'Still up' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
 
 function GroupCard({ g, cat, i, streak, onOpen }: { g: Group; cat: CatalogGame[]; i: number; streak?: number; onOpen: () => void }) {
   const rx = useSpring(0, { stiffness: 220, damping: 20 }), ry = useSpring(0, { stiffness: 220, damping: 20 });
@@ -38,6 +40,7 @@ function GroupCard({ g, cat, i, streak, onOpen }: { g: Group; cat: CatalogGame[]
           <span>{done}/{active.length} today</span>
         </span>
       </>}
+      <div className="gcard-line"><ColorLine main={g.mainColor} accent={g.accentColor} delay={i * 0.08} /></div>
     </motion.button>
   </motion.div>;
 }
@@ -46,6 +49,7 @@ export function Home({ user, groups, cat, streaks, theme, setTheme, onOpen, onAd
   user: User; groups: Group[] | null; cat: CatalogGame[]; streaks: Record<string, number>; theme: Theme; setTheme: (t: Theme) => void;
   onOpen: (id: string) => void; onAdd: (tab: 'create' | 'join') => void; onAccount: () => void; onLogout: () => void;
 }) {
+  const first = user.displayName.split(' ')[0];
   return <div className="page">
     <header className="top">
       <span className="brand sm"><span className="brand-mark"><Icon name="flame" size={16} /></span>Streak’d</span>
@@ -53,6 +57,7 @@ export function Home({ user, groups, cat, streaks, theme, setTheme, onOpen, onAd
         items={[{ label: 'Account', icon: 'user', onClick: onAccount }, { label: 'New group', icon: 'plus', onClick: () => onAdd('create') }, { label: 'Join with a code', icon: 'invite', onClick: () => onAdd('join') }, 'divider', { label: 'Log out', icon: 'logout', onClick: onLogout }]} />
     </header>
 
+    <p className="mute home-greet">{hello()}, {first}</p>
     <div className="home-head">
       <h1>Your Groups</h1>
       <button className="btn primary sm" onClick={() => onAdd('create')}><Icon name="plus" size={16} />New</button>
