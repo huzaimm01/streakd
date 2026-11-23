@@ -2,7 +2,7 @@ import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ambient } from './Ambient';
 import { Auth } from './Auth';
-import { api, refresh, setToken } from './api';
+import { api, refresh, setToken, subscribeWaking } from './api';
 import { applyPalette, defaultPalette, palette } from './color';
 import { GroupView } from './Group';
 import { Home } from './Home';
@@ -30,6 +30,8 @@ function Shell({ user, setUser, logout }: { user: User; setUser: (u: User) => vo
   const [streaks, setStreaks] = useState<Record<string, number>>({}), [gid, go] = useRoute(), toast = useToast();
   const [theme, setTheme] = useState<Theme>((localStorage.getItem('theme') as Theme) || 'dark');
   const [account, setAccount] = useState(false), [add, setAdd] = useState<null | 'create' | 'join'>(null), [addTab, setAddTab] = useState<'create' | 'join'>('create');
+  const [waking, setWaking] = useState(false);
+  useEffect(() => subscribeWaking(setWaking), []);
   const dark = !useMedia('(prefers-color-scheme: light)'), mode: Mode = theme === 'system' ? (dark ? 'dark' : 'light') : theme;
 
   const loadGroups = useCallback(async () => {
@@ -52,6 +54,7 @@ function Shell({ user, setUser, logout }: { user: User; setUser: (u: User) => vo
   const open = (id: string | null) => { go(id); scrollTo({ top: 0 }); };
 
   return <>
+    {waking && <div className="wake-pill" role="status">Waking the server…</div>}
     <Ambient bg={pal.bg} orbs={orbs} />
     <AnimatePresence mode="wait" initial={false}>
       {g ? <motion.div key={'g' + g._id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>

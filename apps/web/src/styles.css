@@ -210,3 +210,7 @@ h1,h2,h3,p{margin:0}h1,h2,h3,.brand{font-family:"Space Grotesk",Manrope,system-u
 
 @media(max-width:520px){.page{padding-left:16px;padding-right:16px}.strip{padding:14px}.strip-stat .num{font-size:26px}.hero-ring svg{width:56px;height:56px}.gcards{gap:14px}}
 @media(prefers-reduced-motion:reduce){.orb,.flame-big,.hm-grid i,.skeleton::after,.chip.live::before{animation:none!important}}
+
+/* Shown while the API is waking from Render's free-tier sleep: requests
+   retry in the background, so this is a status note, not an error. */
+.wake-pill{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:200;padding:8px 16px;border-radius:99px;background:color-mix(in srgb,var(--sheet) 78%,transparent);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid var(--glass-b);font-size:13px;font-weight:600;box-shadow:0 16px 40px -14px var(--shadow)}
