@@ -10,6 +10,11 @@ export const cfg = {
   sameSite: (process.env.COOKIE_SAMESITE || 'lax') as 'lax' | 'strict' | 'none',
   accessTtl: process.env.ACCESS_TTL || '15m',
   appUrl: (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, ''),
+  // Render (and any reverse proxy) sets X-Forwarded-For. Fastify only trusts
+  // it when trustProxy is on; without it req.ip is the proxy's address, so
+  // every client shares one rate-limit bucket (10 logins/min TOTAL, and one
+  // attacker can lock everyone out). render.yaml sets TRUST_PROXY=true.
+  trustProxy: process.env.TRUST_PROXY === 'true',
   smtpUrl: process.env.SMTP_URL || '',
   mailFrom: process.env.MAIL_FROM || 'Streak’d <no-reply@localhost>',
   refreshDays: Number(process.env.REFRESH_DAYS || 30),

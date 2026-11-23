@@ -51,7 +51,7 @@ async function syncSubmissions(userId: string, sourceGroupId: string, date: stri
 }
 
 export async function build() {
-  const app = Fastify({ logger: true });
+  const app = Fastify({ logger: true, trustProxy: cfg.trustProxy });
   await app.register(cors, { origin: cfg.cors, credentials: true });
   await app.register(cookie);
   await app.register(jwt, { secret: cfg.jwtSecret, sign: { expiresIn: cfg.accessTtl } });
@@ -235,23 +235,37 @@ export async function build() {
     await Membership.updateOne({ groupId: inv!.groupId, userId: uid(req) }, { $setOnInsert: { role: 'member' } }, { upsert: true });
     return { groupId: inv!.groupId };
   });
+  // Revoke an invite code (admin+). Codes are multi-use until their 7-day
+  // expiry, so a leaked link needs a kill switch: without this, `revoked`
+  // could never become true and the only remedy was waiting it out.
+  app.delete('/groups/:groupId/invites/:code', A, async (req) => {
+    const { groupId } = await member(req, 'admin');
+    const { code } = req.params as { code: string };
+    const r = await Invitation.updateOne({ groupId, code }, { $set: { revoked: true } });
+    if (!r.matchedCount) fail(404, 'Invite not found');
+    return { ok: true };
+  });
   app.delete('/groups/:groupId/members/:userId', A, async (req) => {
     const { m, groupId } = await member(req, 'admin');
-    const target = await Membership.findOne({ groupId, userId: (req.params as any).userId });
+    const userId = (req.params as any).userId as string;
+    if (!/^[a-f\d]{24}$/i.test(userId)) fail(404, 'Member not found');
+    const target = await Membership.findOne({ groupId, userId });
     if (!target) fail(404, 'Member not found');
     if (target!.role === 'owner' || (target!.role === 'admin' && m.role !== 'owner')) fail(403, 'Insufficient permissions');
     await target!.deleteOne(); return { ok: true };
   });
   app.patch('/groups/:groupId/members/:userId', A, async (req) => {
     const { groupId } = await member(req, 'owner');
+    const userId = (req.params as any).userId as string;
+    if (!/^[a-f\d]{24}$/i.test(userId)) fail(404, 'Member not found');
     const { role } = z.object({ role: z.enum(['admin', 'member']) }).parse(req.body);
-    const t = await Membership.findOne({ groupId, userId: (req.params as any).userId });
+    const t = await Membership.findOne({ groupId, userId });
     if (!t || t.role === 'owner') fail(404, 'Member not found');
     t!.role = role; await t!.save(); return { ok: true };
   });
   app.post('/groups/:groupId/transfer', A, async (req) => {
     const { m, group, groupId } = await member(req, 'owner');
-    const { userId } = z.object({ userId: z.string() }).parse(req.body);
+    const { userId } = z.object({ userId: z.string().regex(/^[a-f\d]{24}$/i) }).parse(req.body);
     const t = await Membership.findOne({ groupId, userId });
     if (!t) fail(404, 'Member not found');
     t!.role = 'owner'; m.role = 'admin'; group.ownerId = t!.userId as any;
