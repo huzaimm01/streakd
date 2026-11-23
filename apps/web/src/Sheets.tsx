@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, dropSubmission, queueSubmission, sleep } from './api';
 import { PRESETS, isHex } from './color';
 import { Btn, ColorLine, ConfirmBtn, Err, Field, Icon, Segmented, Sheet, Switch, useAction, useToast } from './ui';
 import type { CatalogGame, Group, Role, User } from './types';
@@ -21,10 +21,31 @@ export function SubmitSheet({ g, cat, open, onClose, onSaved }: { g: Group; cat:
     const r = await api('GET', `/groups/${g._id}/submissions?date=${today}`); setVals(Object.fromEntries(r.items.map((i: any) => [i.gameId, i.raw])));
   }); }, [open, g._id]);
   const save = () => run(async () => {
-    const r = await api('PUT', `/groups/${g._id}/submissions`, { date, results: vals }); setErrs(r.errors); onSaved();
-    const n = Object.keys(r.saved).length, bad = Object.keys(r.errors).length, pts = Object.values<any>(r.saved).reduce((a, s) => a + (s.points ?? 0), 0);
-    const syncedNames = (r.synced ?? []).map((s: any) => s.name), skippedNames = (r.skipped ?? []).map((s: any) => s.name);
-    if (!bad) { toast(n ? `Saved ${n} result${n > 1 ? 's' : ''}${pts ? ` · +${pts} pts` : ''}${syncedNames.length ? ` · also in ${syncedNames.join(', ')}` : ''}${skippedNames.length ? ` · not in ${skippedNames.join(', ')} (future date there)` : ''}` : 'Cleared'); onClose(); } else toast(`${bad} to fix`, 'err');
+    const p = api('PUT', `/groups/${g._id}/submissions`, { date, results: vals });
+    const savedToast = (r: any) => {
+      const n = Object.keys(r.saved).length, bad = Object.keys(r.errors).length, pts = Object.values<any>(r.saved).reduce((a, s) => a + (s.points ?? 0), 0);
+      const syncedNames = (r.synced ?? []).map((s: any) => s.name), skippedNames = (r.skipped ?? []).map((s: any) => s.name);
+      return { n, bad, msg: n ? `Saved ${n} result${n > 1 ? 's' : ''}${pts ? ` · +${pts} pts` : ''}${syncedNames.length ? ` · also in ${syncedNames.join(', ')}` : ''}${skippedNames.length ? ` · not in ${skippedNames.join(', ')} (future date there)` : ''}` : 'Cleared' };
+    };
+    // Fast path: the server is already awake, answer came back at once.
+    const w = await Promise.race([p.then((r) => ({ done: true as const, r })), sleep(2500).then(() => ({ done: false as const }))]);
+    if (w.done) {
+      const r = w.r; setErrs(r.errors); onSaved();
+      const { bad, msg } = savedToast(r);
+      if (!bad) { toast(msg); onClose(); } else toast(`${bad} to fix`, 'err');
+      return;
+    }
+    // Slow path: the server is still waking. Close now and finish in the
+    // background — the user never waits on a cold start. The results are
+    // also queued on this device, so if the push ultimately fails they are
+    // sent on the next open instead of being lost.
+    queueSubmission(g._id, date, vals);
+    onClose(); toast('Saving in the background — sending once the server’s awake');
+    p.then((r) => {
+      setErrs(r.errors); onSaved(); dropSubmission(g._id, date);
+      const { bad, msg } = savedToast(r);
+      if (!bad) toast(msg); else toast(`${bad} to fix — open Today’s results to correct`, 'err');
+    }).catch(() => toast('Couldn’t reach the server — saved on this device, will send when it’s awake', 'err'));
   });
   return <Sheet open={open} onClose={onClose} title="Today’s results">
     <p className="mute lede">Fill in what you played, leave the rest blank. Saving again updates it. Results also sync to your other groups that play the same games.</p>

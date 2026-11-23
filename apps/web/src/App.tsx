@@ -2,7 +2,7 @@ import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ambient } from './Ambient';
 import { Auth } from './Auth';
-import { api, refresh, setToken, subscribeWaking } from './api';
+import { api, flushOutbox, refresh, setToken, subscribeWaking, wake } from './api';
 import { applyPalette, defaultPalette, palette } from './color';
 import { GroupView } from './Group';
 import { Home } from './Home';
@@ -75,6 +75,14 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null), [ready, setReady] = useState(false), [slow, setSlow] = useState(false);
   const dark = !useMedia('(prefers-color-scheme: light)'), theme = (localStorage.getItem('theme') as Theme) || 'dark', mode: Mode = theme === 'system' ? (dark ? 'dark' : 'light') : theme;
   useEffect(() => { (async () => { try { if (await refresh()) setUser(await api('GET', '/users/me')); } catch {} setReady(true); })(); }, []);
+  // Wake the server the moment the site opens (and whenever the tab comes
+  // back), and push any results saved on this device while it was asleep.
+  useEffect(() => {
+    wake(); flushOutbox().catch(() => {});
+    const onVis = () => { if (!document.hidden) { wake(); flushOutbox().catch(() => {}); } };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
   // If the API is still waking up after a few seconds, say so instead of a bare pulsing dot.
   useEffect(() => { if (ready) return; const t = setTimeout(() => setSlow(true), 4000); return () => clearTimeout(t); }, [ready]);
   const logout = async () => { await api('POST', '/auth/logout').catch(() => {}); setToken(null); setUser(null); location.hash = '#/'; };

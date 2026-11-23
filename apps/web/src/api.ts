@@ -22,7 +22,49 @@ let waking = false, inflight = 0;
 function setWaking(v: boolean) { if (v === waking) return; waking = v; wakingListeners.forEach((f) => f(v)); }
 export function subscribeWaking(f: WakingListener) { wakingListeners.add(f); f(waking); return () => { wakingListeners.delete(f); }; }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Fire-and-forget wake-up ping. Opening the site hits /health so Render
+// starts spinning the service up immediately, before login or any real
+// request. It never throws and never retries: the real requests below have
+// their own retry logic; this one only starts the spin-up as early as
+// possible.
+export function wake() {
+  try { fetch(BASE + '/health', { signal: AbortSignal.timeout(10000) }).catch(() => {}); } catch {}
+}
+
+// --- outbox ---
+// Results saved while the server is still waking are kept on the device and
+// pushed when it answers. Submissions update in place (unique per
+// group/user/game/date), so sending the same results twice is harmless —
+// the second send just overwrites with the same values.
+const OUTBOX_KEY = 'streakd-outbox';
+type OutboxItem = { groupId: string; date: string; results: Record<string, string> };
+function readOutbox(): OutboxItem[] { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? '[]'); } catch { return []; } }
+function writeOutbox(items: OutboxItem[]) { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(items)); } catch {} }
+export function queueSubmission(groupId: string, date: string, results: Record<string, string>) {
+  const items = readOutbox(), i = items.findIndex((x) => x.groupId === groupId && x.date === date);
+  if (i >= 0) items[i] = { groupId, date, results: { ...items[i].results, ...results } };
+  else items.push({ groupId, date, results });
+  writeOutbox(items);
+}
+export function dropSubmission(groupId: string, date: string) {
+  writeOutbox(readOutbox().filter((x) => !(x.groupId === groupId && x.date === date)));
+}
+let flushing = false;
+export async function flushOutbox(): Promise<void> {
+  if (flushing) return;
+  const items = readOutbox();
+  if (!items.length) return;
+  flushing = true;
+  try {
+    for (const item of items) {
+      await api('PUT', `/groups/${item.groupId}/submissions`, { date: item.date, results: item.results });
+      dropSubmission(item.groupId, item.date);
+    }
+  } catch { /* stays queued; retried on the next open */ } finally { flushing = false; }
+}
+
 const RETRY_DELAYS = [2000, 4000, 8000, 16000];
 const ATTEMPT_TIMEOUT = 30000;
 
