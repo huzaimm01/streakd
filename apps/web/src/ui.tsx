@@ -1,4 +1,4 @@
-import { AnimatePresence, animate, motion, useDragControls } from 'framer-motion';
+import { AnimatePresence, animate, motion, useDragControls, useIsPresent } from 'framer-motion';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import type { Theme } from './types';
 
@@ -113,6 +113,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 // ---------------------------------------------------------------- sheet (bottom sheet on phones, modal on desktop)
+// An AnimatePresence child stays mounted (invisible) while its exit animation
+// runs, so a closing overlay would still take clicks — the group menu's theme
+// switcher flipped the theme after the menu had visually closed. useIsPresent
+// is false exactly while exiting, so pointer events go off the moment it
+// starts closing.
+function SheetRoot({ children }: { children: ReactNode }) {
+  const isPresent = useIsPresent();
+  return <div className="sheet-root" style={{ pointerEvents: isPresent ? undefined : 'none' }}>{children}</div>;
+}
+
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const mobile = useMedia('(max-width: 640px)'); const drag = useDragControls(); const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -123,7 +133,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     return () => { document.removeEventListener('keydown', key); document.body.style.overflow = overflow; prev?.focus?.(); };
   }, [open]);
   return <AnimatePresence>{open && (
-    <div className="sheet-root">
+    <SheetRoot>
       <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
       <motion.div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className="sheet grain"
         initial={mobile ? { y: '100%' } : { opacity: 0, y: 24, scale: 0.97 }} animate={mobile ? { y: '0%' } : { opacity: 1, y: 0, scale: 1 }} exit={mobile ? { y: '100%' } : { opacity: 0, y: 12, scale: 0.98 }}
@@ -134,11 +144,20 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
         <div className="sheet-head"><h2>{title}</h2><button className="icon-btn quiet" onClick={onClose} aria-label="Close"><Icon name="x" /></button></div>
         <div className="sheet-body">{children}</div>
       </motion.div>
-    </div>)}</AnimatePresence>;
+    </SheetRoot>)}</AnimatePresence>;
 }
 
 // ---------------------------------------------------------------- menu (hidden until opened)
 export type MenuItem = 'divider' | { label: string; icon: string; onClick: () => void; danger?: boolean; hidden?: boolean };
+function MenuPop({ top, items, onPick }: { top?: ReactNode; items: MenuItem[]; onPick: (it: Exclude<MenuItem, 'divider'>) => void }) {
+  const isPresent = useIsPresent();
+  return (
+    <motion.div role="menu" className="menu-pop" style={{ transformOrigin: 'top right', pointerEvents: isPresent ? 'auto' : 'none' }} initial={{ opacity: 0, scale: 0.9, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: -4 }} transition={{ type: 'spring', stiffness: 520, damping: 34 }}>
+      {top && <div className="menu-top">{top}</div>}
+      {items.map((i, n) => i === 'divider' ? <hr key={n} /> : (
+        <button key={i.label} role="menuitem" className={'menu-item' + (i.danger ? ' danger' : '')} onClick={() => onPick(i)}><Icon name={i.icon} size={18} />{i.label}</button>))}
+    </motion.div>);
+}
 export function Menu({ label, trigger, items, top }: { label: string; trigger: ReactNode; items: MenuItem[]; top?: ReactNode }) {
   const [open, setOpen] = useState(false); const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -155,11 +174,6 @@ export function Menu({ label, trigger, items, top }: { label: string; trigger: R
   };
   return <div className="menu" ref={ref} onKeyDown={nav}>
     <motion.button className="icon-btn glass" aria-label={label} aria-haspopup="menu" aria-expanded={open} whileTap={{ scale: 0.9 }} onClick={() => setOpen((o) => !o)}>{trigger}</motion.button>
-    <AnimatePresence>{open && (
-      <motion.div role="menu" className="menu-pop" style={{ transformOrigin: 'top right' }} initial={{ opacity: 0, scale: 0.9, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: -4 }} transition={{ type: 'spring', stiffness: 520, damping: 34 }}>
-        {top && <div className="menu-top">{top}</div>}
-        {shown.map((i, n) => i === 'divider' ? <hr key={n} /> : (
-          <button key={i.label} role="menuitem" className={'menu-item' + (i.danger ? ' danger' : '')} onClick={() => { setOpen(false); i.onClick(); }}><Icon name={i.icon} size={18} />{i.label}</button>))}
-      </motion.div>)}</AnimatePresence>
+    <AnimatePresence>{open && <MenuPop top={top} items={shown} onPick={(it) => { setOpen(false); it.onClick(); }} />}</AnimatePresence>
   </div>;
 }
