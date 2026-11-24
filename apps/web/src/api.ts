@@ -99,12 +99,34 @@ async function fetchRetry(method: string, path: string, headers: Record<string, 
   }
 }
 
-export async function refresh(): Promise<boolean> {
-  const stored = getStoredRt();
-  const r = await fetchRetry('POST', '/auth/refresh', stored ? { 'Content-Type': 'application/json' } : {}, stored ? JSON.stringify({ refreshToken: stored }) : undefined);
-  if (!r.ok) { token = null; setStoredRt(null); return false; }
-  const j = await r.json();
-  token = j.accessToken; setStoredRt(j.refreshToken ?? null); return true;
+// Refresh tokens are single-use: the server rotates on every refresh, so two
+// refreshes racing with the same token leave one holding a 401 — and the
+// loser used to wipe the fresh token the winner had just stored, logging the
+// user out with "Unauthorized" on everything. Opening the site raced exactly
+// this way (session restore and the outbox flush both refresh at once). One
+// shared in-flight refresh, and only a 401 from the server clears the stored
+// token; a network error leaves it alone for the next attempt.
+let refreshPromise: Promise<boolean> | null = null;
+export function refresh(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const stored = getStoredRt();
+      let r: Response;
+      try {
+        r = await fetchRetry('POST', '/auth/refresh', stored ? { 'Content-Type': 'application/json' } : {}, stored ? JSON.stringify({ refreshToken: stored }) : undefined);
+      } catch {
+        return false;
+      }
+      if (!r.ok) { token = null; setStoredRt(null); return false; }
+      const j = await r.json().catch(() => null);
+      if (!j?.accessToken) return false;
+      token = j.accessToken; setStoredRt(j.refreshToken ?? null); return true;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
 }
 export function setToken(t: string | null, rt?: string | null) { token = t; if (rt !== undefined) setStoredRt(rt); if (t === null) setStoredRt(null); }
 
