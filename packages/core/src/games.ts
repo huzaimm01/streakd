@@ -91,7 +91,7 @@ export const GAMES: GameAdapter[] = [
   },
   {
     id: 'krillion', name: 'Krillion', icon: 'target', direction: 'higher',
-    description: 'Seven rounds, up to 100 points each.', url: 'https://krillion.game',
+    description: 'Seven rounds, up to 100 points each.', url: 'https://krillion.io',
     inputHint: 'Total score, 0-700',
     validate: (raw) => (isInt(raw) && krillionSums.has(raw) ? { ok: true, success: true, value: raw } : bad('Not a possible total: 7 rounds of 0, 10, 15, 30, 60, 85 or 100')),
     format: (v) => `${v}/700`,
