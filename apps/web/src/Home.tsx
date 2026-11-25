@@ -45,9 +45,9 @@ function GroupCard({ g, cat, i, streak, onOpen }: { g: Group; cat: CatalogGame[]
   </motion.div>;
 }
 
-export function Home({ user, groups, cat, streaks, theme, setTheme, onOpen, onAdd, onAccount, onLogout }: {
+export function Home({ user, groups, cat, streaks, theme, setTheme, onOpen, onAdd, onAccount, onLogout, onLogScores }: {
   user: User; groups: Group[] | null; cat: CatalogGame[]; streaks: Record<string, number>; theme: Theme; setTheme: (t: Theme) => void;
-  onOpen: (id: string) => void; onAdd: (tab: 'create' | 'join') => void; onAccount: () => void; onLogout: () => void;
+  onOpen: (id: string) => void; onAdd: (tab: 'create' | 'join') => void; onAccount: () => void; onLogout: () => void; onLogScores: () => void;
 }) {
   const first = user.displayName.split(' ')[0];
   return <div className="page">
@@ -60,7 +60,10 @@ export function Home({ user, groups, cat, streaks, theme, setTheme, onOpen, onAd
     <p className="mute home-greet">{hello()}, {first}</p>
     <div className="home-head">
       <h1>Your Groups</h1>
-      <button className="btn primary sm" onClick={() => onAdd('create')}><Icon name="plus" size={16} />New</button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {groups && groups.length > 0 && <button className="btn glass sm" onClick={onLogScores}><Icon name="check" size={16} />Log scores</button>}
+        <button className="btn primary sm" onClick={() => onAdd('create')}><Icon name="plus" size={16} />New</button>
+      </div>
     </div>
 
     {groups === null && <div className="gcards">{[0, 1, 2].map((i) => <div key={i} className="glass gcard skeleton" />)}</div>}

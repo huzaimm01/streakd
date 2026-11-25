@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, dropSubmission, queueSubmission, sleep } from './api';
 import { PRESETS, isHex } from './color';
 import { Btn, ColorLine, ConfirmBtn, Err, Field, Icon, Segmented, Sheet, Switch, useAction, useToast } from './ui';
@@ -7,7 +7,7 @@ import type { CatalogGame, Group, Role, User } from './types';
 
 export const meta = (g: Group, cat: CatalogGame[], id: string) => {
   const c = g.games.find((x) => x.gameId === id), p = cat.find((x) => x.id === id);
-  return { name: c?.name ?? p?.name ?? id, hint: c?.inputHint ?? p?.inputHint ?? '', icon: p?.icon ?? 'sparkles', custom: !!c?.custom };
+  return { name: c?.name ?? p?.name ?? id, hint: c?.inputHint ?? p?.inputHint ?? '', icon: p?.icon ?? 'sparkles', custom: !!c?.custom, url: p?.url };
 };
 const QUICK: Record<string, string[]> = { wordle: ['1', '2', '3', '4', '5', '6', 'X'], flagle: ['1', '2', '3', '4', '5', '6', 'X'], worldle: ['1', '2', '3', '4', '5', 'X'], connections: ['0', '1', '2', '3', '4'] };
 
@@ -51,13 +51,107 @@ export function SubmitSheet({ g, cat, open, onClose, onSaved }: { g: Group; cat:
     <p className="mute lede">Fill in what you played, leave the rest blank. Saving again updates it. Results also sync to your other groups that play the same games.</p>
     <div className="games-list">{active.map((x) => { const m = meta(g, cat, x.gameId), q = QUICK[x.gameId], v = vals[x.gameId] ?? '';
       return <div className="game-row" key={x.gameId} data-bad={!!errs[x.gameId] || undefined}>
-        <div className="game-head"><span className="tile-ico"><Icon name={m.icon} size={18} /></span><div><b>{m.name}</b><small className="mute">{m.hint}</small></div></div>
+        <div className="game-head"><span className="tile-ico"><Icon name={m.icon} size={18} /></span><div><b>{m.name}</b><small className="mute">{m.hint}</small></div>{m.url && <a className="play-link" href={m.url} target="_blank" rel="noreferrer">Play<Icon name="external" size={13} /></a>}</div>
         {q ? <div className="chips">{q.map((c) => <button key={c} type="button" className="pick" aria-pressed={v.toUpperCase() === c} onClick={() => setVals({ ...vals, [x.gameId]: v.toUpperCase() === c ? '' : c })}>{c}</button>)}</div>
           : <input className="input" inputMode="text" value={v} aria-label={`${m.name} result`} onChange={(e) => setVals({ ...vals, [x.gameId]: e.target.value })} />}
         {errs[x.gameId] && <p className="err">{errs[x.gameId]}</p>}
       </div>; })}</div>
     <Err e={err} />
     <Btn variant="primary" className="block sticky" busy={busy} disabled={!date} onClick={save}>Save results</Btn>
+  </Sheet>;
+}
+
+// ------------------------------------------------------------- log today's results everywhere
+export function HomeSubmitSheet({ groups, cat, open, onClose, onSaved }: { groups: Group[]; cat: CatalogGame[]; open: boolean; onClose: () => void; onSaved: () => void }) {
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [dates, setDates] = useState<Record<string, string>>({});
+  const [existing, setExisting] = useState<Record<string, Record<string, string>>>({});
+  const { err, busy, run } = useAction(); const toast = useToast();
+  const groupKey = groups.map((g) => g._id).join(',');
+
+  // Union of active games across groups, in first-seen order, with the groups that play each.
+  const union = useMemo(() => {
+    const out: { id: string; groups: Group[] }[] = [];
+    for (const g of groups) for (const x of g.games.filter((y) => y.active)) {
+      const e = out.find((o) => o.id === x.gameId);
+      if (e) { if (!e.groups.includes(g)) e.groups.push(g); } else out.push({ id: x.gameId, groups: [g] });
+    }
+    return out;
+  }, [groupKey]);
+
+  useEffect(() => { if (!open) return; setErrs({}); setTouched({}); run(async () => {
+    const days: Record<string, string> = {}, ex: Record<string, Record<string, string>> = {}, merged: Record<string, string> = {};
+    await Promise.all(groups.map(async (g) => {
+      const { today } = await api('GET', `/groups/${g._id}/streaks`); days[g._id] = today;
+      const r = await api('GET', `/groups/${g._id}/submissions?date=${today}`);
+      ex[g._id] = Object.fromEntries(r.items.map((i: any) => [i.gameId, i.raw]));
+      for (const [gameId, raw] of Object.entries(ex[g._id])) if (merged[gameId] === undefined) merged[gameId] = raw;
+    }));
+    setDates(days); setExisting(ex); setVals(merged);
+  }); }, [open, groupKey]);
+
+  const save = () => run(async () => {
+    // One payload per group: games the user touched, plus untouched games the
+    // group is missing (fill the gap so one entry syncs everywhere).
+    // Untouched values a group already has are left alone, never overwritten.
+    const payloads = groups.flatMap((g) => {
+      const results: Record<string, string> = {};
+      for (const { id } of union) {
+        if (!g.games.some((x) => x.gameId === id && x.active)) continue;
+        if (touched[id]) results[id] = vals[id] ?? '';
+        else if (existing[g._id]?.[id] === undefined && vals[id] !== undefined && vals[id] !== '') results[id] = vals[id];
+      }
+      return Object.keys(results).length ? [{ groupId: g._id, date: dates[g._id], results }] : [];
+    });
+    if (!payloads.length) { onClose(); return; }
+    const all = Promise.all(payloads.map((p) =>
+      api('PUT', `/groups/${p.groupId}/submissions`, { date: p.date, results: p.results })
+        .then((r: any) => ({ ok: true as const, groupId: p.groupId, r }))
+        .catch((e: any) => ({ ok: false as const, groupId: p.groupId, e }))));
+    // Fast path: the server is already awake, answers came back at once.
+    const w = await Promise.race([all.then((rs) => ({ done: true as const, rs })), sleep(2500).then(() => ({ done: false as const }))]);
+    if (!w.done) {
+      payloads.forEach((p) => queueSubmission(p.groupId, p.date, p.results));
+      onClose(); toast('Saving in the background — sending once the server’s awake');
+      all.then((rs) => {
+        rs.forEach((x, i) => { if (x.ok) dropSubmission(payloads[i].groupId, payloads[i].date); });
+        onSaved();
+      });
+      return;
+    }
+    // Fast path: summarize what landed. Points count once per game even when
+    // the same result went to several groups.
+    const errsAll: Record<string, string> = {};
+    const seen = new Map<string, number>(); const names: string[] = []; const failed: string[] = [];
+    w.rs.forEach((x, i) => {
+      const g = groups.find((gg) => gg._id === payloads[i].groupId)!;
+      if (!x.ok) { failed.push(g.name); queueSubmission(payloads[i].groupId, payloads[i].date, payloads[i].results); return; }
+      Object.assign(errsAll, x.r.errors ?? {});
+      const saved = x.r.saved ?? {};
+      if (Object.keys(saved).length) names.push(g.name);
+      for (const [gameId, s] of Object.entries<any>(saved)) if (!seen.has(gameId)) seen.set(gameId, s.points ?? 0);
+    });
+    setErrs(errsAll); onSaved();
+    const bad = Object.keys(errsAll).length + failed.length;
+    if (!bad) {
+      const n = seen.size, pts = [...seen.values()].reduce((a, b) => a + b, 0);
+      toast(n ? `Saved ${n} result${n > 1 ? 's' : ''}${pts ? ` · +${pts} pts` : ''} in ${names.join(', ')}` : 'Nothing to save');
+      onClose();
+    } else toast(`${bad} to fix — open a group’s Today’s results to correct`, 'err');
+  });
+  return <Sheet open={open} onClose={onClose} title="Log today’s scores">
+    <p className="mute lede">Enter once — it syncs to every group that plays each game. Saving again updates it.</p>
+    <div className="games-list">{union.map(({ id, groups: gs }) => { const m = meta(gs[0], cat, id), q = QUICK[id], v = vals[id] ?? '';
+      return <div className="game-row" key={id} data-bad={!!errs[id] || undefined}>
+        <div className="game-head"><span className="tile-ico"><Icon name={m.icon} size={18} /></span><div><b>{m.name}</b><small className="mute">{m.hint}</small>{gs.length > 1 && <small className="mute">in {gs.map((g) => g.name).join(', ')}</small>}</div>{m.url && <a className="play-link" href={m.url} target="_blank" rel="noreferrer">Play<Icon name="external" size={13} /></a>}</div>
+        {q ? <div className="chips">{q.map((c) => <button key={c} type="button" className="pick" aria-pressed={v.toUpperCase() === c} onClick={() => { setVals({ ...vals, [id]: v.toUpperCase() === c ? '' : c }); setTouched({ ...touched, [id]: true }); }}>{c}</button>)}</div>
+          : <input className="input" inputMode="text" value={v} aria-label={`${m.name} result`} onChange={(e) => { setVals({ ...vals, [id]: e.target.value }); setTouched({ ...touched, [id]: true }); }} />}
+        {errs[id] && <p className="err">{errs[id]}</p>}
+      </div>; })}</div>
+    <Err e={err} />
+    <Btn variant="primary" className="block sticky" busy={busy} disabled={!union.length} onClick={save}>Save to all groups</Btn>
   </Sheet>;
 }
 
@@ -106,6 +200,7 @@ export function GamesSheet({ g, cat, open, onClose, reload }: { g: Group; cat: C
     <div className="games-list">{g.games.map((x) => { const m = meta(g, cat, x.gameId); return (
       <div className="toggle-row" key={x.gameId}><span className="tile-ico"><Icon name={m.icon} size={18} /></span>
         <div><b>{m.name}</b>{m.custom && <small className="mute">Custom · no points</small>}</div>
+        {m.url && <a className="play-link" href={m.url} target="_blank" rel="noreferrer">Play<Icon name="external" size={13} /></a>}
         <Switch label={m.name} on={x.active} disabled={!admin} onChange={(v) => run(async () => { await api('PATCH', `/groups/${g._id}/games`, { gameId: x.gameId, active: v }); await reload(); })} /></div>); })}</div>
     {admin && <><h3>Add a custom game</h3>
       <input className="input" placeholder="Name" value={c.name} maxLength={40} onChange={(e) => setC({ ...c, name: e.target.value })} />

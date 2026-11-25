@@ -6,7 +6,7 @@ import { api, flushOutbox, refresh, setToken, subscribeWaking, wake } from './ap
 import { applyPalette, defaultPalette, palette } from './color';
 import { GroupView } from './Group';
 import { Home } from './Home';
-import { AccountSheet, AddGroupSheet } from './Sheets';
+import { AccountSheet, AddGroupSheet, HomeSubmitSheet } from './Sheets';
 import { ToastProvider, useMedia, useToast } from './ui';
 import type { CatalogGame, Group, Mode, Theme, User } from './types';
 
@@ -30,6 +30,7 @@ function Shell({ user, setUser, logout }: { user: User; setUser: (u: User) => vo
   const [streaks, setStreaks] = useState<Record<string, number>>({}), [gid, go] = useRoute(), toast = useToast();
   const [theme, setTheme] = useState<Theme>((localStorage.getItem('theme') as Theme) || 'dark');
   const [account, setAccount] = useState(false), [add, setAdd] = useState<null | 'create' | 'join'>(null), [addTab, setAddTab] = useState<'create' | 'join'>('create');
+  const [logScores, setLogScores] = useState(false);
   const [waking, setWaking] = useState(false);
   useEffect(() => subscribeWaking(setWaking), []);
   const dark = !useMedia('(prefers-color-scheme: light)'), mode: Mode = theme === 'system' ? (dark ? 'dark' : 'light') : theme;
@@ -63,10 +64,11 @@ function Shell({ user, setUser, logout }: { user: User; setUser: (u: User) => vo
       </motion.div>
         : <motion.div key="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
           <Home user={user} groups={groups} cat={cat} streaks={streaks} theme={theme} setTheme={setTheme} onOpen={open} onAccount={() => setAccount(true)} onLogout={logout}
-            onAdd={(t) => { setAddTab(t); setAdd(t); }} />
+            onAdd={(t) => { setAddTab(t); setAdd(t); }} onLogScores={() => setLogScores(true)} />
         </motion.div>}
     </AnimatePresence>
     <AccountSheet user={user} setUser={setUser} open={account} onClose={() => setAccount(false)} logout={logout} />
+    <HomeSubmitSheet groups={groups ?? []} cat={cat} open={logScores} onClose={() => setLogScores(false)} onSaved={afterChange} />
     <AddGroupSheet open={!!add} tab={addTab} setTab={setAddTab} onClose={() => setAdd(null)} onDone={async (id) => { setAdd(null); await loadGroups(); open(id); }} />
   </>;
 }

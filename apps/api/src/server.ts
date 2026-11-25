@@ -168,7 +168,7 @@ export async function build() {
   });
 
   // ---------- Games ----------
-  app.get('/games', A, async () => GAMES.map(({ id, name, icon, description, direction, inputHint }) => ({ id, name, icon, description, direction, inputHint })));
+  app.get('/games', A, async () => GAMES.map(({ id, name, icon, description, direction, inputHint, url }) => ({ id, name, icon, description, direction, inputHint, url })));
 
   // ---------- Groups ----------
   const tz = z.string().refine((s) => { try { dateInTz(0, s); return true; } catch { return false; } }, 'Unknown timezone');
